@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Quiz App</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* --- Custom Animations --- */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0); }
+            50% { box-shadow: 0 0 12px 5px rgba(34, 197, 94, 0.7); }
+        }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0); } /* red-500 */
+            50% { box-shadow: 0 0 12px 5px rgba(239, 68, 68, 0.7); } /* red-500 */
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        /* Animation Classes */
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        .animate-slide-up {
+            animation: slideUp 0.5s ease-out;
+        }
+        .animate-fade-out {
+            animation: fadeOut 0.3s ease-out forwards; /* 'forwards' keeps it at 0 opacity */
+        }
+        .score-pulse-correct {
+            animation: pulse-green 1s ease-out;
+        }
+        .score-pulse-wrong {
+            animation: pulse-red 1s ease-out;
+        }
+
+        /* --- Button & Option Styles --- */
+        /* REMOVED @apply directives as they are not supported by the Tailwind Play CDN */
+        /* The classes are now applied directly in the HTML and JS */
+
+        .option-btn.selected {
+            background-color: #dbeafe; /* blue-100 */
+            border-color: #3b82f6; /* blue-500 */
+        }
+        .option-btn.correct {
+            background-color: #dcfce7; /* green-100 */
+            border-color: #22c55e; /* green-500 */
+            color: #166534; /* green-800 */
+        }
+        .option-btn.wrong {
+            background-color: #fee2e2; /* red-100 */
+            border-color: #ef4444; /* red-500 */
+            color: #991b1b; /* red-800 */
+        }
+        .option-btn:disabled {
+            opacity: 0.9;
+            cursor: not-allowed;
+        }
+
+        /* --- Progress Bar --- */
+        /* REMOVED @apply directives */
+
+    </style>
+</head>
+<body class="bg-gray-100 font-sans flex items-start sm:items-center justify-center min-h-screen">
+
+    <div class="container w-full max-w-xl mx-auto p-4">
+        <!-- Main App Container -->
+        <div id="app-container" class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full min-h-[500px] overflow-hidden mt-8 sm:mt-0 animate-fade-in">
+
+            <!-- 1. Start Screen -->
+            <div id="start-screen">
+                <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">CSV Quiz Generator</h1>
+                <p class="text-gray-600 text-center mb-6">
+                    Upload your CSV file to begin the quiz.
+                </p>
+                <div class="flex flex-col space-y-4">
+                    <!-- File Upload -->
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-all duration-200 hover:border-blue-500 hover:bg-gray-50">
+                        <label for="csv-file" class="cursor-pointer text-blue-600 hover:text-blue-800 font-medium text-lg">
+                            Click to Upload CSV File
+                        </label>
+                        <input type="file" id="csv-file" class="hidden" accept=".csv">
+                        <p id="file-name" class="text-sm text-gray-500 mt-2">No file chosen</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Quiz Screen -->
+            <div id="quiz-screen" class="hidden">
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-4">
+                    <h2 id="score-display" class="text-xl font-semibold text-blue-600 p-2 rounded-lg transition-all duration-300">Score: 0/0</h2>
+                    <div id="question-counter" class="text-lg font-medium text-gray-500"></div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden mb-6">
+                    <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                </div>
+
+                <!-- Question Content (for animation) -->
+                <div id="question-content">
+                    <p id="question-text" class="text-2xl font-semibold text-gray-800 mb-6 min-h-[60px]"></p>
+                    
+                    <div id="options-container" class="flex flex-col space-y-3">
+                        <!-- Options will be dynamically inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Explanation Card (appears after submit) -->
+                <div id="explanation-card" class="hidden mt-6 p-4 bg-gray-50 border border-gray-300 rounded-lg shadow-inner">
+                    <h3 id="explanation-title" class="text-lg font-bold mb-2">Explanation</h3>
+                    <p id="explanation-text" class="text-gray-700"></p>
+                </div>
+
+                <!-- Controls -->
+                <div class="mt-8 flex flex-col sm:flex-row sm:justify-between items-center space-y-3 sm:space-y-0">
+                    <button id="prev-btn" class="font-bold py-2 px-5 rounded-lg transition-all duration-200 shadow-md transform focus:outline-none bg-gray-500 hover:bg-gray-600 text-white hover:shadow-lg active:scale-95 hover:scale-105 w-full sm:w-auto">Previous</button>
+                    
+                    <div class="flex space-x-3 w-full sm:w-auto">
+                        <button id="skip-btn" class="font-bold py-2 px-5 rounded-lg transition-all duration-200 shadow-md transform focus:outline-none bg-yellow-500 hover:bg-yellow-600 text-white hover:shadow-lg active:scale-95 hover:scale-105 w-1/2 sm:w-auto">Skip</button>
+                        <button id="submit-btn" class="font-bold py-2 px-5 rounded-lg transition-all duration-200 shadow-md transform focus:outline-none bg-green-600 hover:bg-green-700 text-white hover:shadow-lg active:scale-95 hover:scale-105 w-1/2 sm:w-auto">Submit</button>
+                    </div>
+                    
+                    <button id="next-btn" class="font-bold py-2 px-5 rounded-lg transition-all duration-200 shadow-md transform focus:outline-none bg-blue-600 hover:bg-blue-700 text-white hover:shadow-lg active:scale-95 hover:scale-105 w-full sm:w-auto">Next</button>
+                </div>
+            </div>
+
+            <!-- 3. Results Screen -->
+            <div id="results-screen" class="hidden text-center">
+                <h1 class="text-3xl font-bold text-gray-800 mb-4">Quiz Complete!</h1>
+                <h2 id="final-score" class="text-5xl font-bold mb-8"></h2>
+
+                <!-- Summary of Wrong Questions -->
+                <div id="wrong-questions-summary" class="text-left mb-8">
+                    <h3 class="text-2xl font-semibold text-red-600 mb-4">Review Your Answers</h3>
+                    <div id="wrong-questions-list" class="space-y-6">
+                        <!-- Wrong questions will be inserted here -->
+                    </div>
+                </div>
+
+                <button id="restart-btn" class="font-bold py-2 px-5 rounded-lg transition-all duration-200 shadow-md transform focus:outline-none bg-blue-600 hover:bg-blue-700 text-white hover:shadow-lg active:scale-95 hover:scale-105 w-full text-lg py-3">
+                    Take Another Quiz
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const startScreen = document.getElementById('start-screen');
+        const quizScreen = document.getElementById('quiz-screen');
+        const resultsScreen = document.getElementById('results-screen');
+        
+        const fileInput = document.getElementById('csv-file');
+        const fileNameDisplay = document.getElementById('file-name');
+        
+        const scoreDisplay = document.getElementById('score-display');
+        const questionCounter = document.getElementById('question-counter');
+        const progressBar = document.getElementById('progress-bar');
+        
+        const questionContent = document.getElementById('question-content');
+        const questionText = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        
+        const submitBtn = document.getElementById('submit-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const skipBtn = document.getElementById('skip-btn');
+        
+        const explanationCard = document.getElementById('explanation-card');
+        const explanationTitle = document.getElementById('explanation-title');
+        const explanationText = document.getElementById('explanation-text');
+        
+        const finalScore = document.getElementById('final-score');
+        const wrongQuestionsList = document.getElementById('wrong-questions-list');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // --- App State ---
+        let quizData = [];
+        let userAnswers = []; // Store user's answers
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let selectedOptionIndex = -1;
+
+        // --- Event Listeners ---
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                fileNameDisplay.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    processCSV(e.target.result);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        submitBtn.addEventListener('click', handleSubmit);
+        nextBtn.addEventListener('click', () => handleNav(1));
+        prevBtn.addEventListener('click', () => handleNav(-1));
+        skipBtn.addEventListener('click', handleSkip);
+        restartBtn.addEventListener('click', handleRestart);
+
+        // --- Functions ---
+        
+        function processCSV(csvText) {
+            // Reset state
+            quizData = [];
+            currentQuestionIndex = 0;
+            score = 0;
+            
+            const lines = csvText.trim().split('\n');
+            for (let i = 1; i < lines.length; i++) { // Skip header
+                if (lines[i].trim() === "") continue;
+                const fields = parseCSVLine(lines[i]);
+                if (fields.length === 7) {
+                    try {
+                        const correctIndex = parseInt(fields[5].trim()) - 1;
+                        if (isNaN(correctIndex) || correctIndex < 0 || correctIndex > 3) continue;
+                        quizData.push({
+                            question: fields[0].replace(/^"|"$/g, ''),
+                            options: [
+                                fields[1].replace(/^"|"$/g, ''),
+                                fields[2].replace(/^"|"$/g, ''),
+                                fields[3].replace(/^"|"$/g, ''),
+                                fields[4].replace(/^"|"$/g, ''),
+                            ],
+                            correctAnswerIndex: correctIndex,
+                            explanation: fields[6].replace(/^"|"$/g, ''),
+                        });
+                    } catch (e) {
+                        console.error("Error parsing line:", lines[i], e);
+                    }
+                }
+            }
+            
+            if (quizData.length > 0) {
+                userAnswers = new Array(quizData.length).fill(null);
+                startQuiz();
+            } else {
+                alert("Could not load quiz. The CSV file seems to be empty or in the wrong format.");
+                fileNameDisplay.textContent = "No file chosen";
+            }
+        }
+        
+        function parseCSVLine(line) {
+            const fields = [];
+            let currentField = '';
+            let inQuotes = false;
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if (char === '"' && (j === 0 || line[j-1] !== '\\')) {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    fields.push(currentField.trim());
+                    currentField = '';
+                } else {
+                    currentField += char;
+                }
+            }
+            fields.push(currentField.trim());
+            return fields;
+        }
+
+        function showScreen(screenToShow) {
+            const screens = [startScreen, quizScreen, resultsScreen];
+            let currentlyVisible = screens.find(s => !s.classList.contains('hidden'));
+            
+            if (currentlyVisible === screenToShow) return; // Already visible
+
+            if (currentlyVisible) {
+                currentlyVisible.classList.add('animate-fade-out');
+                setTimeout(() => {
+                    currentlyVisible.classList.add('hidden');
+                    currentlyVisible.classList.remove('animate-fade-out'); // Clean up
+                    
+                    screenToShow.classList.remove('hidden');
+                    screenToShow.classList.add('animate-fade-in'); // Use existing animation
+                }, 300); // Must match animation duration
+            } else {
+                // First load
+                screenToShow.classList.remove('hidden');
+                screenToShow.classList.add('animate-fade-in');
+            }
+        }
+
+        function startQuiz() {
+            showScreen(quizScreen);
+            displayQuestion();
+        }
+
+        function displayQuestion() {
+            // --- Animate Question ---
+            // Remove, reflow, add to re-trigger animation
+            questionContent.classList.remove('animate-fade-in');
+            void questionContent.offsetWidth;
+            questionContent.classList.add('animate-fade-in');
+
+            // --- Reset State ---
+            selectedOptionIndex = -1;
+            const current = quizData[currentQuestionIndex];
+            const answerData = userAnswers[currentQuestionIndex];
+
+            // --- Update UI Text ---
+            questionText.textContent = current.question;
+            questionCounter.textContent = `Question ${currentQuestionIndex + 1} of ${quizData.length}`;
+            
+            // --- Update Progress Bar ---
+            const progressPercent = ((currentQuestionIndex + 1) / quizData.length) * 100;
+            progressBar.style.width = `${progressPercent}%`;
+            
+            // --- Render Options ---
+            optionsContainer.innerHTML = '';
+            current.options.forEach((option, index) => {
+                const optionBtn = document.createElement('button');
+                optionBtn.textContent = option;
+                // Apply Tailwind classes directly AND the 'option-btn' class for selection logic
+                optionBtn.classList.add('option-btn', 'w-full', 'text-left', 'p-4', 'border-2', 'border-gray-300', 'rounded-lg', 'transition-all', 'duration-150', 'font-medium');
+                optionBtn.dataset.index = index;
+                
+                if (answerData) { // Question has been answered
+                    optionBtn.disabled = true;
+                    if (index === current.correctAnswerIndex) {
+                        optionBtn.classList.add('correct');
+                    }
+                    if (index === answerData.selectedIndex && !answerData.isCorrect) {
+                        optionBtn.classList.add('wrong');
+                    }
+                    if (index === answerData.selectedIndex) {
+                        optionBtn.classList.add('selected'); // Re-show what user selected
+                    }
+                } else { // New question
+                    // Add hover classes for non-disabled state
+                    optionBtn.classList.add('hover:border-blue-500', 'hover:bg-blue-50', 'hover:scale-105');
+                    optionBtn.addEventListener('click', () => {
+                        document.querySelectorAll('.option-btn.selected').forEach(btn => btn.classList.remove('selected'));
+                        optionBtn.classList.add('selected');
+                        selectedOptionIndex = index;
+                    });
+                }
+                optionsContainer.appendChild(optionBtn);
+            });
+            
+            // --- Show/Hide Explanation & Controls ---
+            if (answerData) {
+                explanationCard.classList.remove('hidden');
+                explanationCard.classList.add('animate-slide-up');
+                explanationText.textContent = current.explanation;
+
+                if (answerData.skipped) {
+                    explanationTitle.textContent = "You Skipped This Question";
+                    explanationTitle.classList.remove('text-green-600', 'text-red-600');
+                    explanationTitle.classList.add('text-yellow-600');
+                } else if (answerData.isCorrect) {
+                    explanationTitle.textContent = "Correct!";
+                    explanationTitle.classList.add('text-green-600');
+                    explanationTitle.classList.remove('text-red-600', 'text-yellow-600');
+                } else {
+                    explanationTitle.textContent = "Incorrect";
+                    explanationTitle.classList.add('text-red-600');
+                    explanationTitle.classList.remove('text-green-600', 'text-yellow-600');
+                }
+                
+                submitBtn.classList.add('hidden');
+                skipBtn.classList.add('hidden');
+            } else {
+                explanationCard.classList.add('hidden');
+                explanationCard.classList.remove('animate-slide-up');
+                submitBtn.classList.remove('hidden');
+                skipBtn.classList.remove('hidden');
+            }
+            
+            // --- Control Nav Buttons ---
+            prevBtn.classList.toggle('hidden', currentQuestionIndex === 0);
+            
+            if (currentQuestionIndex === quizData.length - 1) {
+                nextBtn.textContent = "Finish Quiz";
+                nextBtn.classList.toggle('hidden', !answerData); // Show "Finish" only after answering last question
+            } else {
+                nextBtn.textContent = "Next";
+                nextBtn.classList.toggle('hidden', !answerData); // Show "Next" only after answering
+            }
+        }
+        
+        function handleSubmit() {
+            if (selectedOptionIndex === -1) {
+                // Simple inline message box instead of alert
+                let msg = document.getElementById('select-msg');
+                if (!msg) {
+                    msg = document.createElement('p');
+                    msg.id = 'select-msg';
+                    msg.className = 'text-red-500 text-center font-bold mt-4 animate-fade-in';
+                    // Find the parent of the controls to append the message
+                    const controlsParent = document.getElementById('prev-btn').parentElement;
+                    if (controlsParent) {
+                         controlsParent.parentElement.appendChild(msg);
+                    }
+                }
+                msg.textContent = "Please select an answer first!";
+                setTimeout(() => {
+                    msg.remove(); // Only remove the message
+                }, 2000); // Close the timeout properly
+                return; // Stop the function from proceeding
+            }
+
+            // --- This logic is now correctly placed outside the 'if' block ---
+            const current = quizData[currentQuestionIndex];
+            const isCorrect = (selectedOptionIndex === current.correctAnswerIndex);
+            
+            userAnswers[currentQuestionIndex] = {
+                selectedIndex: selectedOptionIndex,
+                isCorrect: isCorrect,
+                skipped: false
+            };
+
+            if (isCorrect) {
+                score++;
+                triggerScoreAnimation(true);
+            } else {
+                triggerScoreAnimation(false);
+            }
+            
+            scoreDisplay.textContent = `Score: ${score}/${quizData.length}`;
+            displayQuestion(); // Re-display to show answered state
+        }
+        
+        function handleSkip() {
+            userAnswers[currentQuestionIndex] = {
+                selectedIndex: -1,
+                isCorrect: false,
+                skipped: true
+            };
+            handleNav(1); // Move to next question
+        }
+
+        function handleNav(direction) {
+            const newIndex = currentQuestionIndex + direction;
+            if (newIndex >= 0 && newIndex < quizData.length) {
+                currentQuestionIndex = newIndex;
+                displayQuestion();
+            } else if (newIndex === quizData.length) {
+                showResults();
+            }
+        }
+
+        function triggerScoreAnimation(isCorrect) {
+            scoreDisplay.classList.remove('score-pulse-correct', 'score-pulse-wrong');
+            void scoreDisplay.offsetWidth; // Force reflow
+            scoreDisplay.classList.add(isCorrect ? 'score-pulse-correct' : 'score-pulse-wrong');
+        }
+
+        function showResults() {
+            showScreen(resultsScreen);
+
+            const percentage = (score / quizData.length) * 100;
+            finalScore.textContent = `Your Score: ${score} / ${quizData.length} (${percentage.toFixed(0)}%)`;
+            
+            finalScore.classList.remove('text-green-600', 'text-yellow-600', 'text-red-600');
+            if (percentage >= 80) {
+                finalScore.classList.add('text-green-600');
+            } else if (percentage >= 50) {
+                finalScore.classList.add('text-yellow-600');
+            } else {
+                finalScore.classList.add('text-red-600');
+            }
+
+            wrongQuestionsList.innerHTML = '';
+            let hasWrongAnswers = false;
+            quizData.forEach((q, index) => {
+                const answerData = userAnswers[index];
+                
+                if (!answerData || !answerData.isCorrect) {
+                    hasWrongAnswers = true;
+                    const item = document.createElement('div');
+                    item.classList.add('p-4', 'border', 'rounded-lg');
+                    
+                    let userAnswerText;
+                    if (!answerData) {
+                        userAnswerText = "Not Answered";
+                        item.classList.add('bg-gray-50', 'border-gray-200');
+                    } else if (answerData.skipped) {
+                        userAnswerText = "Skipped";
+                        item.classList.add('bg-yellow-50', 'border-yellow-200');
+                    } else {
+                        userAnswerText = q.options[answerData.selectedIndex];
+                        item.classList.add('bg-red-50', 'border-red-200');
+                    }
+
+                    item.innerHTML = `
+                        <p class="font-semibold text-gray-800 mb-2">${index + 1}. ${q.question}</p>
+                        <p class="text-sm ${!answerData || answerData.skipped ? 'text-yellow-700' : 'text-red-700'}">
+                            <strong>Your answer:</strong> ${userAnswerText}
+                        </p>
+                        <p class="text-sm text-green-700"><strong>Correct answer:</strong> ${q.options[q.correctAnswerIndex]}</p>
+                        <p class="text-sm text-gray-600 mt-2"><strong>Explanation:</strong> ${q.explanation}</p>
+                    `;
+                    wrongQuestionsList.appendChild(item);
+                }
+            });
+
+            if (!hasWrongAnswers) {
+                wrongQuestionsList.innerHTML = '<p class="text-green-600 font-medium text-center">Congratulations! You got all questions correct.</p>';
+            }
+        }
+
+        function handleRestart() {
+            showScreen(startScreen);
+            
+            quizData = [];
+            userAnswers = [];
+            currentQuestionIndex = 0;
+            score = 0;
+            fileInput.value = '';
+            fileNameDisplay.textContent = "No file chosen";
+
+            scoreDisplay.textContent = `Score: 0/0`;
+            scoreDisplay.classList.remove('score-pulse-correct', 'score-pulse-wrong');
+            progressBar.style.width = '0%';
+        }
+    </script>
+</body>
+</html>
